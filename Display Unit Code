@@ -1,0 +1,98 @@
+// Display Unit Code
+
+#include <WiFi.h>
+#include <esp_now.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_GFX.h>
+
+// OLED display configuration
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Buzzer pin
+const int buzzerPin = 19;
+
+// Define safe pressure threshold (in kPa)
+const float safePressure = 200.0;
+
+typedef struct struct_message {
+  float tirePressure[4];
+} struct_message;
+
+struct_message incomingData;
+
+// Callback when data is received
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&incomingData, incomingData, sizeof(incomingData));
+  displayData();
+  checkPressure();
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Initialize Buzzer
+  pinMode(buzzerPin, OUTPUT);
+  digitalWrite(buzzerPin, LOW);
+
+  // Initialize OLED display
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;);
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  display.println("TPMS Initialized");
+  display.display();
+  delay(2000);
+  display.clearDisplay();
+
+  // Initialize WiFi
+  WiFi.mode(WIFI_STA);
+  Serial.println("ESP-NOW Receiver");
+
+  // Initialize ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
+  esp_now_register_recv_cb(OnDataRecv);
+}
+
+void loop() {
+  // Main loop does nothing, waiting for data reception
+  delay(1000);
+}
+
+void displayData() {
+  display.clearDisplay();
+  display.setCursor(0,0);
+  for (int i = 0; i < 4; i++) {
+    display.print("Tire ");
+    display.print(i+1);
+    display.print(": ");
+    display.print(incomingData.tirePressure[i]);
+    display.println(" kPa");
+  }
+  display.display();
+}
+
+void checkPressure() {
+  bool lowPressure = false;
+  for (int i = 0; i < 4; i++) {
+    if (incomingData.tirePressure[i] < safePressure) {
+      lowPressure = true;
+      break;
+    }
+  }
+  if (lowPressure) {
+    digitalWrite(buzzerPin, HIGH);
+  } else {
+    digitalWrite(buzzerPin, LOW);
+  }
+}
