@@ -1,0 +1,66 @@
+// Sensor Unit Code
+
+#include <WiFi.h>
+#include <esp_now.h>
+
+// Define analog pins for pressure sensors
+const int sensorPins[4] = {36, 39, 34, 35}; // Adjust based on your ESP32 board
+
+// MAC address of the receiver ESP32 (Display Unit)
+uint8_t receiverAddress[] = {0x24, 0x6F, 0x28, 0xAB, 0xCD, 0xEF}; // Replace with your receiver's MAC address
+
+typedef struct struct_message {
+  float tirePressure[4];
+} struct_message;
+
+struct_message pressureData;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize sensors pins
+  for (int i = 0; i < 4; i++) {
+    pinMode(sensorPins[i], INPUT);
+  }
+
+  // Initialize WiFi
+  WiFi.mode(WIFI_STA);
+  Serial.println("ESP-NOW Sender");
+
+  // Initialize ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
+  // Register peer
+  esp_now_peer_info_t peerInfo;
+  memcpy(peerInfo.peer_addr, receiverAddress, 6);
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+  
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }
+}
+
+void loop() {
+  // Read pressure from sensors
+  for (int i = 0; i < 4; i++) {
+    int analogValue = analogRead(sensorPins[i]);
+    // Convert analog value to pressure in PSI (example conversion)
+    pressureData.tirePressure[i] = (analogValue / 4095.0) * 700; // MPX5700AP ranges from 0 to 700 kPa
+  }
+
+  // Send data via ESP-NOW
+  esp_err_t result = esp_now_send(receiverAddress, (uint8_t *) &pressureData, sizeof(pressureData));
+  
+  if (result == ESP_OK) {
+    Serial.println("Sent successfully");
+  } else {
+    Serial.println("Error sending data");
+  }
+  
+  delay(1000); // Send data every second
+}
